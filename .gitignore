@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+index/
+runs/
+.nextflow*
+work/
