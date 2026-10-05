@@ -4,3 +4,4 @@ index/
 runs/
 .nextflow*
 work/
+.pytest_cache/

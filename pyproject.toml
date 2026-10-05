@@ -1,7 +1,7 @@
 [project]
-name = "testing-nf-core-mcp"
+name = "nfcore-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "A local MCP server that takes a researcher from a data problem to a running nf-core pipeline"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -10,4 +10,20 @@ dependencies = [
     "mcp[cli]>=2.3",
     "pyyaml>=6.0.3",
     "rank-bm25>=0.2.2",
+]
+
+[project.scripts]
+nfcore-mcp = "nfcore_mcp.server:main"
+nfcore-mcp-build-index = "nfcore_mcp.index:main"
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "nfcore_mcp"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
 ]
