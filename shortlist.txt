@@ -1,0 +1,37 @@
+# Pipelines to index in M1. One nf-core name per line; lines starting with # are ignored.
+# Delete the ones you do not know well enough to judge a search result.
+
+# Viral
+viralmetagenome
+viralrecon
+viralintegration
+
+# Taxonomic profiling and classification
+taxprofiler
+createtaxdb
+detaxizer
+ampliseq
+coproid
+
+# Assembly, binning, mapping
+mag
+magmap
+metatdenovo
+
+# Functional screening and profiling
+funcscan
+funcprofiler
+metapep
+proteinfamilies
+phyloplace
+
+# Bacterial isolates and pathogen genomics
+bacass
+bactmap
+pathogensurveillance
+hgtseq
+eager
+
+# Decoys: off-topic pipelines, so a search can show it ranks the right thing above the wrong thing
+rnaseq
+sarek

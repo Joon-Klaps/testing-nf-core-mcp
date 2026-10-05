@@ -15,8 +15,16 @@ def entry(name: str, description: str, readme: str = "", topics: list[str] | Non
 @pytest.fixture
 def entries() -> list[IndexEntry]:
     return [
-        entry("viralrecon", "Assembly and intrahost variant calling for viral samples", "Consensus genomes from viral amplicon reads."),
-        entry("taxprofiler", "Taxonomic profiling of shotgun metagenomic data", "Classify reads with Kraken2 and MetaPhlAn."),
+        entry(
+            "viralrecon",
+            "Assembly and intrahost variant calling for viral samples",
+            "Consensus genomes from viral amplicon reads.",
+        ),
+        entry(
+            "taxprofiler",
+            "Taxonomic profiling of shotgun metagenomic data",
+            "Classify reads with Kraken2 and MetaPhlAn.",
+        ),
         entry("rnaseq", "RNA sequencing analysis pipeline", "Gene expression quantification from RNA-seq reads."),
     ]
 
@@ -28,11 +36,13 @@ def test_read_shortlist_skips_comments_and_blanks(tmp_path):
 
 
 def test_latest_release_ignores_dev_and_list_order():
-    pipeline = {"releases": [
-        {"tag_name": "1.0.0", "published_at": "2024-01-01T00:00:00Z"},
-        {"tag_name": "dev", "published_at": "2026-10-01T00:00:00Z"},
-        {"tag_name": "1.1.0", "published_at": "2025-01-01T00:00:00Z"},
-    ]}
+    pipeline = {
+        "releases": [
+            {"tag_name": "1.0.0", "published_at": "2024-01-01T00:00:00Z"},
+            {"tag_name": "dev", "published_at": "2026-10-01T00:00:00Z"},
+            {"tag_name": "1.1.0", "published_at": "2025-01-01T00:00:00Z"},
+        ]
+    }
     assert latest_release(pipeline) == "1.1.0"
 
 
@@ -46,14 +56,26 @@ def test_tokenize_lowercases_and_splits():
 
 def test_search_ranks_the_obvious_match_first(entries):
     hits = PipelineSearch(entries).search("consensus genomes from a viral outbreak", k=2)
-    assert [h["name"] for h in hits][0] == "viralrecon"
+    assert hits[0]["name"] == "viralrecon"
     assert len(hits) == 2
     assert isinstance(hits[0]["score"], float)
 
 
 def test_matching_lines_returns_lines_sharing_query_tokens():
     readme = "# Title\n\nCalls variants.\nBuilds consensus genomes for viruses.\n"
-    assert matching_lines(readme, {"consensus", "genomes"}) == ["Builds consensus genomes for viruses."]
+    assert matching_lines(readme, {"consensus": 1.0, "genomes": 1.0}) == ["Builds consensus genomes for viruses."]
+
+
+def test_matching_lines_prefers_rare_words_over_common_ones():
+    readme = "It is built with Nextflow and a container and a test.\nViral consensus genomes.\n"
+    weights = {"and": 0.01, "a": 0.01, "viral": 2.0}
+    assert matching_lines(readme, weights, max_lines=1) == ["Viral consensus genomes."]
+
+
+def test_search_clamps_k(entries):
+    search = PipelineSearch(entries)
+    assert len(search.search("viral", k=-1)) == 1
+    assert len(search.search("viral", k=1000)) == len(entries)
 
 
 def test_check_pipeline_refuses_unknown_names(entries):
