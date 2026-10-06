@@ -29,8 +29,6 @@ DOC_PATHS = {"readme": "README.md", "usage": "docs/usage.md", "output": "docs/ou
 
 mcp = MCPServer("nf-core-mcp", "0.1.0")
 
-# TODO (M3): put @audited under @mcp.tool(...) on every tool, the five existing ones included, so every call lands in runs/audit.log.
-
 
 @cache
 def pipelines() -> list[IndexEntry]:

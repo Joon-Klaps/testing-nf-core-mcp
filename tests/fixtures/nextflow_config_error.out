@@ -1,0 +1,11 @@
+Pulling nf-core/viralrecon:3.0.0 ...
+ downloaded from https://github.com/nf-core/viralrecon.git
+
+Error nextflow.config:252:26: Invalid include source: '/home/user/.nextflow/assets/.repos/nf-core/viralrecon/clones/395079f1d24dce731ac22e03d7a5e71f110103fc/conf/test_full_sispa.config'
+│ 252 |     test_full_sispa    { includeConfig 'conf/test_full_sispa.config'  
+╰     |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+ERROR ~ Config parsing failed
+
+ -- Check '.nextflow.log' file for details

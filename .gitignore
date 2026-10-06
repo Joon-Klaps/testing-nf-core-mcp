@@ -6,3 +6,4 @@ runs/
 work/
 .pytest_cache/
 data/
+testing/

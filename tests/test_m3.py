@@ -324,3 +324,15 @@ def test_audited_tool_keeps_its_mcp_schema(audit_log):
 
     asyncio.run(server.call_tool("find", {"problem": "viral", "k": 2}))
     assert entries(audit_log)[0]["arguments"] == {"problem": "viral", "k": 2}
+
+
+def test_error_block_starts_at_the_parser_diagnostic():
+    # Real output of nf-core/viralrecon 3.0.0 under Nextflow 26's strict parser: the cause comes before "ERROR ~".
+    block = runs.error_block((FIXTURES / "nextflow_config_error.out").read_text())
+    assert block[0].startswith("Error nextflow.config:252:26: Invalid include source")
+    assert any("Config parsing failed" in line for line in block)
+
+
+def test_nextflow_env_sets_the_syntax_parser(monkeypatch):
+    monkeypatch.setattr(runs, "NEXTFLOW_SYNTAX_PARSER", "v1")
+    assert runs.nextflow_env()["NXF_SYNTAX_PARSER"] == "v1"

@@ -74,12 +74,28 @@ def iter_params(params_schema: dict) -> Iterator[tuple[str, dict, bool]]:
             yield name, spec, name in required
 
 
+def type_name(spec: dict) -> str:
+    """One readable type for a parameter or column, however the schema spells it.
+
+    JSON Schema allows "type": "string", a list "type": ["string", "integer"] (viralrecon's sample column), or no type with alternatives under anyOf (raredisease's sex: integer 0/1/2 or the string "other"). All become one string, "string or integer", because ParamInfo and ColumnInfo promise a str: the SDK checks a tool's result against its declared type and fails the whole call on a mismatch.
+    """
+    declared = spec.get("type")
+    if isinstance(declared, str):
+        return declared
+    if isinstance(declared, list):
+        names = [str(t) for t in declared]
+    else:
+        names = [type_name(alternative) for alternative in spec.get("anyOf", []) if isinstance(alternative, dict)]
+    unique = list(dict.fromkeys(n for n in names if n))  # keep order, drop repeats and blanks
+    return " or ".join(unique)
+
+
 def required_params(params_schema: dict) -> list[ParamInfo]:
     """The parameters a user must set, with type, description and allowed values."""
     return [
         ParamInfo(
             name=name,
-            type=spec.get("type", ""),  # "" when the parameter has no single type (anyOf)
+            type=type_name(spec),
             description=spec.get("description", ""),
             enum=spec.get("enum"),  # None means any value; [] would mean none
         )
@@ -110,7 +126,7 @@ def samplesheet_columns(input_schema: dict) -> list[ColumnInfo]:
     return [
         ColumnInfo(
             name=name,
-            type=spec.get("type", ""),
+            type=type_name(spec),
             required=name in required,
             is_file=spec.get("format") == "file-path",
             pattern=spec.get("pattern"),

@@ -32,3 +32,6 @@ ALLOWED_PROFILES = {"test", "docker", "emulate_amd64", "arm64", "singularity", "
 # Clients such as Claude Desktop start the server with a minimal PATH, without ~/bin or Homebrew. Nextflow and the docker CLI it calls must still be found.
 EXTRA_PATH = [str(Path.home() / "bin"), "/opt/homebrew/bin", "/usr/local/bin"]
 NEXTFLOW = os.environ.get("NFCORE_MCP_NEXTFLOW", "nextflow")
+
+# Nextflow 25.10+ parses pipelines and configs strictly by default. Older nf-core releases were tested with the lenient parser and can fail on it before running a single task (viralrecon 3.0.0 includes a config file that is not in the release). "v1" selects the lenient parser; set NFCORE_MCP_SYNTAX_PARSER=v2 to run strictly.
+NEXTFLOW_SYNTAX_PARSER = os.environ.get("NFCORE_MCP_SYNTAX_PARSER", "v1")

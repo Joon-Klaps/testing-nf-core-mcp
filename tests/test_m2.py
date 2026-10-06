@@ -333,3 +333,32 @@ def test_pair_reads_reports_ambiguous_prefixes_whole(tmp_path, names):
     read_sets, unmatched = pair_reads(touch(tmp_path, *names))
     assert read_sets == []
     assert sorted(unmatched) == sorted(names)
+
+
+@pytest.mark.parametrize(
+    "spec, expected",
+    [
+        ({"type": "string"}, "string"),
+        ({"type": ["string", "integer"]}, "string or integer"),  # viralrecon's sample column
+        ({"anyOf": [{"type": "integer", "enum": [0, 1, 2]}, {"type": "string", "enum": ["other"]}]}, "integer or string"),  # raredisease's sex
+        ({"anyOf": [{"type": "string"}, {"maxLength": 0}]}, "string"),  # raredisease's paternal_id: the untyped branch adds nothing
+        ({}, ""),
+    ],
+)
+def test_type_name_handles_every_spelling(spec, expected):
+    from nfcore_mcp.schemas import type_name
+
+    assert type_name(spec) == expected
+
+
+def test_columns_pass_the_sdk_output_check_with_a_list_type():
+    # The SDK validates a tool's result against its declared type; a list in a str field failed get_pipeline_schema for viralrecon.
+    from pydantic import TypeAdapter
+
+    from nfcore_mcp.schemas import ColumnInfo
+
+    schema = copy.deepcopy(INPUT_SCHEMA)
+    schema["items"]["properties"]["sample"]["type"] = ["string", "integer"]
+    columns = samplesheet_columns(schema)
+    TypeAdapter(list[ColumnInfo]).validate_python(columns, strict=True)
+    assert columns[0]["type"] == "string or integer"

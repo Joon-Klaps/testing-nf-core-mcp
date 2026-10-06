@@ -26,7 +26,7 @@ from typing import Literal, TypedDict
 
 import yaml
 
-from nfcore_mcp.config import EXTRA_PATH, NEXTFLOW
+from nfcore_mcp.config import EXTRA_PATH, NEXTFLOW, NEXTFLOW_SYNTAX_PARSER
 
 # "demo-20261006-142501-a3f9": pipeline, start time, 4 random hex characters so two launches in one second differ.
 RUN_ID = re.compile(r"^[a-z0-9]+-\d{8}-\d{6}-[0-9a-f]{4}$")
@@ -72,9 +72,10 @@ def new_run_id(name: str) -> str:
 
 
 def nextflow_env() -> dict[str, str]:
-    """The environment for the Nextflow process: the server's own, with EXTRA_PATH appended to PATH."""
+    """The environment for the Nextflow process: the server's own, with EXTRA_PATH appended to PATH and the syntax parser chosen in config."""
     env = dict(os.environ)
     env["PATH"] = os.pathsep.join([env.get("PATH", ""), *EXTRA_PATH])
+    env["NXF_SYNTAX_PARSER"] = NEXTFLOW_SYNTAX_PARSER
     return env
 
 
@@ -175,14 +176,14 @@ def read_trace(path: Path) -> list[dict[str, str]]:
 
 
 def error_block(console: str) -> list[str]:
-    """Nextflow's error report from its console output: from the first "ERROR ~" line, at most MAX_ERROR_LINES lines.
+    """Nextflow's error report from its console output, at most MAX_ERROR_LINES lines, starting at the first line that marks an error.
 
-    Nextflow 26 with -ansi-log false prefixes it ("[ERROR] ERROR ~ Error executing process > 'FAIL (1)'"), so look for the marker anywhere in the line.
-    Without an "ERROR ~" line (killed, out of memory, Java missing), the last lines are the best clue, so return those.
+    Two markers, whichever comes first: "ERROR ~" anywhere in a line (Nextflow 26 with -ansi-log false prefixes it, "[ERROR] ERROR ~ Error executing process > 'FAIL (1)'"), and a line starting "Error " (the parser's diagnostics, "Error nextflow.config:252:26: Invalid include source: ..."). A parse failure prints the diagnostic first and only then "ERROR ~ Config parsing failed", which on its own says nothing about the cause.
+    Without either marker (killed, out of memory, Java missing), the last lines are the best clue, so return those.
     """
     lines = console.splitlines()
     for i, line in enumerate(lines):
-        if "ERROR ~" in line:
+        if "ERROR ~" in line or line.startswith("Error "):
             return lines[i : i + MAX_ERROR_LINES]
     return lines[-MAX_ERROR_LINES:]
 
