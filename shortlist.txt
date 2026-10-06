@@ -32,6 +32,9 @@ pathogensurveillance
 hgtseq
 eager
 
+# Demo: the small pipeline used for M2 and M3 done-checks
+demo
+
 # Decoys: off-topic pipelines, so a search can show it ranks the right thing above the wrong thing
 rnaseq
 sarek

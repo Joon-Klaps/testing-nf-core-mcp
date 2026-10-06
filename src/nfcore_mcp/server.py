@@ -5,15 +5,15 @@ Each tool is a few lines of glue: check the request (guardrails), call the modul
 
 import json
 from functools import cache
-from typing import Literal
+from typing import Literal, TypedDict
 
 import httpx
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from nfcore_mcp import catalog, guardrails
-from nfcore_mcp.config import INDEX_FILE
+from nfcore_mcp import catalog, guardrails, samplesheet, schemas, validation
+from nfcore_mcp.config import ALLOWED_DATA_DIRS, INDEX_FILE, RUNS_DIR, SAMPLESHEET_DIR, SCHEMA_CACHE_DIR
 from nfcore_mcp.index import IndexEntry, load_index
 from nfcore_mcp.search import PipelineHit, PipelineSearch
 
@@ -34,7 +34,7 @@ def pipeline_search() -> PipelineSearch:
     return PipelineSearch(pipelines())
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
 def search_pipelines(problem: str, k: int = 5) -> list[PipelineHit]:
     """Find nf-core pipelines that fit a researcher's data problem.
 
@@ -43,7 +43,7 @@ def search_pipelines(problem: str, k: int = 5) -> list[PipelineHit]:
     return pipeline_search().search(problem, k)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
 async def get_pipeline_docs(name: str, release: str, doc: Literal["readme", "usage", "output"] = "usage") -> str:
     """Fetch one documentation page of an nf-core pipeline at a pinned release.
 
@@ -62,6 +62,87 @@ async def get_pipeline_docs(name: str, release: str, doc: Literal["readme", "usa
     if text is None:
         return f"nf-core/{name} {release} has no {DOC_PATHS[doc]}"
     return text
+
+
+class SchemaSummary(TypedDict):
+    name: str
+    release: str
+    required_params: list[schemas.ParamInfo]
+    samplesheet_columns: list[schemas.ColumnInfo]
+
+
+class ValidationResult(TypedDict):
+    valid: bool
+    errors: list[str]
+    validation_id: str | None
+
+
+async def pipeline_schemas(name: str, release: str) -> schemas.PipelineSchemas:
+    """Check name and release, then load both schemas. Shared by the three M2 tools so the checks cannot be forgotten in one of them."""
+    entry = guardrails.check_pipeline(name, pipelines())
+    guardrails.check_release(entry, release)
+
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            return await schemas.load_schemas(client, name, release, SCHEMA_CACHE_DIR)
+    except catalog.CatalogError as e:
+        # Not a refusal: the request was fine, GitHub was not. Say so, so the model can tell the user instead of guessing.
+        raise ToolError(f"Could not fetch the schemas from GitHub, try again later. Details: {e}") from e
+
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
+async def get_pipeline_schema(name: str, release: str) -> SchemaSummary:
+    """What a pipeline needs before it can run: its required parameters, and the columns of its samplesheet with which are required and what file names they accept.
+
+    Call this before generate_samplesheet, to see which extra columns (for example strandedness) the samplesheet needs.
+    """
+    s = await pipeline_schemas(name, release)
+    return SchemaSummary(
+        name=name,
+        release=release,
+        required_params=schemas.required_params(s["params"]),
+        samplesheet_columns=schemas.samplesheet_columns(s["input"]) if s["input"] else []
+    )
+
+@mcp.tool()
+async def generate_samplesheet(
+    name: str, release: str, input_dir: str, extra_columns: dict[str, str] | None = None
+) -> samplesheet.SamplesheetReport:
+    """Write a samplesheet for a pipeline from a folder of FASTQ files (.fastq.gz or .fq.gz).
+
+    Read 1 and read 2 are paired by file name (_R1/_R2 or _1/_2). extra_columns sets columns the file names cannot tell, with one value for every sample, for example {"strandedness": "auto"}. The report lists required columns still missing; ask the user for those, never guess them. Nothing is written while there are errors.
+    """
+    s = await pipeline_schemas(name, release);
+    if s["input"] is None:
+        raise ToolError(f"nf-core/{name} {release} has no samplesheet schema, so a samplesheet cannot be generated.")
+
+    folder = guardrails.check_path(input_dir, ALLOWED_DATA_DIRS)
+    out_path = SAMPLESHEET_DIR / f"{name}_{release}_{guardrails.short_random()}.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    return samplesheet.generate(folder, schemas.samplesheet_columns(s["input"]), s["input"], extra_columns or {}, out_path)
+
+
+
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
+async def validate_inputs(name: str, release: str, params: dict, samplesheet_path: str) -> ValidationResult:
+    """Check parameters and samplesheet against the pipeline's own schemas. A pass returns the validation_id that launching requires.
+
+    Leave out `input` and `outdir`: the server sets `input` to samplesheet_path and chooses `outdir` itself.
+    """
+    s = await pipeline_schemas(name, release)
+    if s["input"] is None:
+        raise ToolError(f"nf-core/{name} {release} has no samplesheet schema, so there is no samplesheet to validate.")
+
+    sheet = guardrails.check_path(samplesheet_path, [*ALLOWED_DATA_DIRS, RUNS_DIR])
+    if not sheet.is_file():
+        raise ToolError(f"{sheet} does not exist. Run generate_samplesheet first, or check the path.")
+
+    # The real outdir is set at launch (M3).
+    params = {**params, "input": str(sheet), "outdir": str(RUNS_DIR / "pending")}
+    errors = validation.validate_params(params, s["params"]) + validation.validate_rows(validation.read_samplesheet(sheet), s["input"])
+    if errors:
+        return ValidationResult(valid=False, errors=errors, validation_id=None)
+    else:
+        return ValidationResult(valid=True, errors=[], validation_id=guardrails.issue_validation_id(name, release, params, sheet))
 
 
 @mcp.resource("nfcore://catalog", mime_type="application/json")

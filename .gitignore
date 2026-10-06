@@ -5,3 +5,4 @@ runs/
 .nextflow*
 work/
 .pytest_cache/
+data/
