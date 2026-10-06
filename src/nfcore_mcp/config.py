@@ -22,3 +22,13 @@ SAMPLESHEET_DIR = RUNS_DIR / "samplesheets"
 ALLOWED_DATA_DIRS = [
     Path(p).expanduser().resolve() for p in os.environ.get("NFCORE_MCP_DATA_DIRS", str(HOME / "data")).split(os.pathsep)
 ]
+
+# Every tool call, refused ones included, as one JSON object per line.
+AUDIT_LOG = RUNS_DIR / "audit.log"
+
+# Profiles a launch may combine. Anything else (an institutional config, a custom -c file) is refused.
+ALLOWED_PROFILES = {"test", "docker", "emulate_amd64", "arm64", "singularity", "conda"}
+
+# Clients such as Claude Desktop start the server with a minimal PATH, without ~/bin or Homebrew. Nextflow and the docker CLI it calls must still be found.
+EXTRA_PATH = [str(Path.home() / "bin"), "/opt/homebrew/bin", "/usr/local/bin"]
+NEXTFLOW = os.environ.get("NFCORE_MCP_NEXTFLOW", "nextflow")

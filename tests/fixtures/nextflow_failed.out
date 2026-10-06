@@ -1,0 +1,38 @@
+[PIPELINE] main.nf | profile=standard
+[WORKDIR] /runs/demo-run/work
+[WARN] WARN: Task runtime metrics are not reported when using macOS without a container engine
+[PROCESS 08/95dc38] OK (1)
+[PROCESS c5/f00c97] FAIL (1)
+[PROCESS e9/b5dbab] OK (2)
+[ERROR] ERROR ~ Error executing process > 'FAIL (1)'
+
+Caused by:
+  Process `FAIL (1)` terminated with an error exit status (3)
+
+
+Command executed:
+
+  echo 'boom on stderr' >&2; exit 3
+
+Command exit status:
+  3
+
+Command output:
+  (empty)
+
+Command error:
+  boom on stderr
+
+Work dir:
+  /runs/demo-run/work/c5/f00c97b40934822f3c080d59dc7887
+
+Tip: when you have fixed the problem you can continue the execution adding the option `-resume` to the run command line
+
+ -- Check '.nextflow.log' file for details
+[ERROR] FAIL (1)
+exit: 3
+cmd: echo 'boom on stderr' >&2; exit 3
+stderr: boom on stderr
+workdir: /runs/demo-run/work/c5/f00c97b40934822f3c080d59dc7887
+
+[FAILED] completed=3 failed=1 cached=0

@@ -12,14 +12,24 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from nfcore_mcp import catalog, guardrails, samplesheet, schemas, validation
-from nfcore_mcp.config import ALLOWED_DATA_DIRS, INDEX_FILE, RUNS_DIR, SAMPLESHEET_DIR, SCHEMA_CACHE_DIR
+from nfcore_mcp import catalog, guardrails, runs, samplesheet, schemas, summary, validation
+from nfcore_mcp.audit import audited
+from nfcore_mcp.config import (
+    ALLOWED_DATA_DIRS,
+    ALLOWED_PROFILES,
+    INDEX_FILE,
+    RUNS_DIR,
+    SAMPLESHEET_DIR,
+    SCHEMA_CACHE_DIR,
+)
 from nfcore_mcp.index import IndexEntry, load_index
 from nfcore_mcp.search import PipelineHit, PipelineSearch
 
 DOC_PATHS = {"readme": "README.md", "usage": "docs/usage.md", "output": "docs/output.md"}
 
 mcp = MCPServer("nf-core-mcp", "0.1.0")
+
+# TODO (M3): put @audited under @mcp.tool(...) on every tool, the five existing ones included, so every call lands in runs/audit.log.
 
 
 @cache
@@ -35,6 +45,7 @@ def pipeline_search() -> PipelineSearch:
 
 
 @mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
+@audited
 def search_pipelines(problem: str, k: int = 5) -> list[PipelineHit]:
     """Find nf-core pipelines that fit a researcher's data problem.
 
@@ -44,6 +55,7 @@ def search_pipelines(problem: str, k: int = 5) -> list[PipelineHit]:
 
 
 @mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
+@audited
 async def get_pipeline_docs(name: str, release: str, doc: Literal["readme", "usage", "output"] = "usage") -> str:
     """Fetch one documentation page of an nf-core pipeline at a pinned release.
 
@@ -90,6 +102,7 @@ async def pipeline_schemas(name: str, release: str) -> schemas.PipelineSchemas:
         raise ToolError(f"Could not fetch the schemas from GitHub, try again later. Details: {e}") from e
 
 @mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
+@audited
 async def get_pipeline_schema(name: str, release: str) -> SchemaSummary:
     """What a pipeline needs before it can run: its required parameters, and the columns of its samplesheet with which are required and what file names they accept.
 
@@ -104,6 +117,7 @@ async def get_pipeline_schema(name: str, release: str) -> SchemaSummary:
     )
 
 @mcp.tool()
+@audited
 async def generate_samplesheet(
     name: str, release: str, input_dir: str, extra_columns: dict[str, str] | None = None
 ) -> samplesheet.SamplesheetReport:
@@ -123,6 +137,7 @@ async def generate_samplesheet(
 
 
 @mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
+@audited
 async def validate_inputs(name: str, release: str, params: dict, samplesheet_path: str) -> ValidationResult:
     """Check parameters and samplesheet against the pipeline's own schemas. A pass returns the validation_id that launching requires.
 
@@ -145,7 +160,55 @@ async def validate_inputs(name: str, release: str, params: dict, samplesheet_pat
         return ValidationResult(valid=True, errors=[], validation_id=guardrails.issue_validation_id(name, release, params, sheet))
 
 
+class LaunchResult(TypedDict):
+    run_id: str
+    results_dir: str
+    profiles: list[str]
+
+
+@mcp.tool()
+@audited
+async def launch(name: str, release: str, validation_id: str, profile: str = "test,docker,emulate_amd64") -> LaunchResult:
+    """Start a pipeline run in the background with inputs that passed validate_inputs, and return its run_id at once.
+
+    profile is a comma-separated list from: test, docker, emulate_amd64, arm64, singularity, conda. A run takes minutes to hours; follow it with run_status.
+    """
+    entry = guardrails.check_pipeline(name, pipelines())
+    guardrails.check_release(entry, release)
+
+    validated = guardrails.check_validation_id(validation_id, name, release)
+    profiles = guardrails.check_profiles(profile, ALLOWED_PROFILES)
+    if "docker" in profiles and not runs.docker_available():
+        raise ToolError("Docker is not available. Run `colima start` to start Docker on this machine.")
+
+    run_id = runs.new_run_id(name)
+    record = runs.start(RUNS_DIR / run_id, name, release, profiles, validated["params"])
+    return LaunchResult(run_id=run_id, results_dir=record["params"]["outdir"], profiles=profiles)
+
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
+@audited
+def run_status(run_id: str) -> runs.RunStatus:
+    """The state of a launched run: running, completed, failed or stopped, with task counts, and the error report when it failed."""
+    run_dir = guardrails.check_run_id(run_id, RUNS_DIR)
+    return runs.status(run_dir)
+
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True))
+@audited
+def run_summary(run_id: str) -> summary.RunSummary:
+    """For a completed run: the output folders, MultiQC's headline numbers per sample, software versions, the parameters set, and the pipeline's own methods text with references, ready to adapt for a paper.
+
+    The methods text's command line does not show `parameters`, which were passed in a params file; mention them alongside it.
+    """
+    run_dir = guardrails.check_run_id(run_id, RUNS_DIR)
+    # Read the state once: a run can finish between two reads, and the message must name the state that failed the check.
+    state = runs.status(run_dir)["state"]
+    if state != "completed":
+        raise ToolError(f"Run {run_id} is {state}; only a completed run can be summarised. Use run_status to see where it stands.")
+    return summary.build_summary(run_dir, runs.load_record(run_dir))
+
+
 @mcp.resource("nfcore://catalog", mime_type="application/json")
+@audited
 def catalog_resource() -> str:
     """Every indexed pipeline with its release, description and topics (README text left out)."""
     return json.dumps(

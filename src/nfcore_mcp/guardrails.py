@@ -11,6 +11,7 @@ from typing import TypedDict
 from mcp.server.mcpserver.exceptions import ToolError
 
 from nfcore_mcp.index import IndexEntry
+from nfcore_mcp.runs import RUN_ID
 
 
 class Refused(ToolError):
@@ -91,3 +92,21 @@ def check_validation_id(validation_id: str, name: str, release: str) -> Validate
     if not sheet.exists() or file_sha256(sheet) != record["samplesheet_sha256"]:
         raise Refused(f"{sheet} changed or disappeared after validation. Run validate_inputs again.")
     return record
+
+
+def check_profiles(profile: str, allowed: set[str]) -> list[str]:
+    """Split a comma-separated profile string and refuse any profile not in allowed. A profile can point Nextflow at any config, so only known ones pass."""
+    profiles = [p.strip() for p in profile.split(",") if p.strip()]
+    if not profiles:
+        raise Refused(f"No profile given. Choose from: {', '.join(sorted(allowed))}.")
+    rejected = [p for p in profiles if p not in allowed]
+    if rejected:
+        raise Refused(f"Profile {', '.join(rejected)} is not allowed. Choose from: {', '.join(sorted(allowed))}.")
+    return profiles
+
+
+def check_run_id(run_id: str, runs_dir: Path) -> Path:
+    """Return the folder of an existing run, or refuse. The id must match the server's own format, so "../" or an absolute path never becomes a folder."""
+    if not RUN_ID.match(run_id) or not (runs_dir / run_id / "run.json").is_file():
+        raise Refused(f"No run with id {run_id!r}. Use the run_id that launch returned.")
+    return runs_dir / run_id
